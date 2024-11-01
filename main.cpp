@@ -30,7 +30,7 @@ int main() {
 
     double T = 0.5;    // шаг дискретизации
     double omega_true = 2.0; // истинная угловая скорость
-    double R = 15.5;    // дисперсия шума измерений
+    double R = 45.5;    // дисперсия шума измерений
 
     double theta_true = 10.0;     // истинный угол
     double theta_est = 0.0;      // оцененный угол (интегрирование измерений)
@@ -41,7 +41,7 @@ int main() {
     std::vector<std::pair<double, double>> theta_est_no_noise_data;
     std::vector<std::pair<double, double>> error_data;
 
-    int steps = 20000;
+    int steps = 25000;
     for (int k = 0; k < steps; ++k) {
         double time = k * T;
 
