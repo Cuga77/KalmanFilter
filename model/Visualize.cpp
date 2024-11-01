@@ -30,7 +30,7 @@ void Visualize::printTraces() {
     }
 }
 
-void Visualize::saveTraceToFile(const std::string& filename) {
+void Visualize::saveTraceToFile(const std::string& filename) const {
     std::ofstream outfile(filename);
     if (!outfile.is_open()) {
         std::cerr << "Не удалось открыть файл " << filename << " для записи." << std::endl;
@@ -42,7 +42,6 @@ void Visualize::saveTraceToFile(const std::string& filename) {
         return;
     }
 
-    // Предполагаем, что хотим сохранить первую траекторию
     const auto& trace = traces[0];
     for (const auto& vec : trace) {
         if (vec.vec.size() >= 3) {

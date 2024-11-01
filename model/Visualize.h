@@ -15,6 +15,6 @@ public:
     void addTrace(std::vector<my_Vector> config);
     void extendsTraceByVec(my_Vector vec);
     void printTraces();
-    void saveTraceToFile(const std::string& filename);
+    void saveTraceToFile(const std::string& filename) const;
     const std::vector<std::vector<my_Vector>>& getTraces() const;
 };
