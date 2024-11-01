@@ -1,147 +1,128 @@
-#include <cmath>
-#include <iostream>
-#include <vector>
+// vector.cpp
+#include "vector.h"
 
-struct my_Vector {
-    std::vector<double> vec;
+#include <algorithm>
 
-    my_Vector() = default;
+my_Vector::my_Vector() = default;
 
-    ~my_Vector() {
-        vec.clear();
+my_Vector::~my_Vector() {
+    vec.clear();
+}
+
+my_Vector::my_Vector(int size) {
+    vec = std::vector<double>(size);
+}
+
+my_Vector::my_Vector(const my_Vector &copyable) {
+    vec = copyable.vec;
+}
+
+my_Vector::my_Vector(my_Vector &&copyable) {
+    vec = std::move(copyable.vec);
+}
+
+my_Vector &my_Vector::operator =(const my_Vector &copyable) {
+    if (this != &copyable) {
+        vec = copyable.vec;
     }
-    my_Vector(int size) {
-        vec = std::vector<double>(size);
-    }
+    return *this;
+}
 
-    my_Vector(const my_Vector &copyable) {
-        for (auto i: copyable.vec) {
-            vec.push_back(i);
-        }
+my_Vector &my_Vector::operator =(my_Vector &&copyable) noexcept {
+    if (this != &copyable) {
+        vec = std::move(copyable.vec);
     }
+    return *this;
+}
 
-    my_Vector(my_Vector &&copyable) {
-        for (auto i: copyable.vec) {
-            vec.push_back(i);
-        }
-        copyable.vec.clear();
-    }
+my_Vector my_Vector::reverse() {
+    my_Vector new_vec(*this);
+    std::reverse(new_vec.vec.begin(), new_vec.vec.end());
+    return new_vec;
+}
 
-    my_Vector &operator =(const my_Vector &copyable) {
-        vec.clear();
-        for (auto i: copyable.vec) {
-            vec.push_back(i);
-        }
-        return *this;
+my_Vector operator +(const my_Vector &v1, const my_Vector &v2) {
+    my_Vector add(v1.vec.size());
+    for (size_t i = 0; i < v1.vec.size(); i++) {
+        add.vec[i] = v1.vec[i] + v2.vec[i];
     }
+    return add;
+}
 
-    my_Vector &operator =(my_Vector &&copyable) noexcept {
-        vec.clear();
-        for (auto i: copyable.vec) {
-            vec.push_back(i);
-        }
-        copyable.vec.clear();
-        return *this;
+my_Vector operator -(const my_Vector &v1, const my_Vector &v2) {
+    my_Vector sub(v1.vec.size());
+    for (size_t i = 0; i < v1.vec.size(); i++) {
+        sub.vec[i] = v1.vec[i] - v2.vec[i];
     }
+    return sub;
+}
 
-    my_Vector reverse() {
-        my_Vector new_vec(*this);
-        for (int i = 0; i < vec.size(); i++) {
-            new_vec.vec[i] = vec[vec.size() - 1 - i];
-        }
-        return new_vec;
+my_Vector operator *(const my_Vector &v1, double k) {
+    my_Vector mul(v1.vec.size());
+    for (size_t i = 0; i < v1.vec.size(); i++) {
+        mul.vec[i] = v1.vec[i] * k;
     }
+    return mul;
+}
 
-    friend my_Vector operator +(const my_Vector &v1, const my_Vector &v2) {
-        my_Vector add;
-        for (int i = 0; i < v1.vec.size(); i++) {
-            add.vec.push_back(v1.vec[i] + v2.vec[i]);
-        }
-        return add;
-    }
+my_Vector operator *(double k, const my_Vector &v1) {
+    return v1 * k;
+}
 
-    friend my_Vector operator -(const my_Vector &v1, const my_Vector &v2) {
-        my_Vector add;
-        for (int i = 0; i < v1.vec.size(); i++) {
-            add.vec.push_back(v1.vec[i] - v2.vec[i]);
-        }
-        return add;
-    }
+void my_Vector::fill(double a, int count) {
+    vec.clear();
+    vec.resize(count, a);
+}
 
-    void fill(double a, int count) {
-        vec.clear();
-        for (int i = 0; i < count; i++) {
-            vec.push_back(a);
-        }
+double my_Vector::lorentz_product(my_Vector v2) const {
+    if (vec.size() != v2.vec.size()) return 0;
+    double result = 0;
+    for (size_t i = 0; i < vec.size() - 1; i++) {
+        result += vec[i] * v2.vec[i];
     }
+    result -= vec[vec.size() - 1] * v2.vec[v2.vec.size() - 1];
+    return result;
+}
 
-    friend my_Vector operator *(const my_Vector &v1, double k) {
-        my_Vector mul;
-        for (auto i: v1.vec) {
-            mul.vec.push_back(i * k);
-        }
-        return mul;
+double my_Vector::len() const {
+    double result = 0;
+    for (auto i: vec) {
+        result += i * i;
     }
+    return sqrt(result);
+}
 
-    friend my_Vector operator *(double k, const my_Vector &v1) {
-        my_Vector mul;
-        for (auto i: v1.vec) {
-            mul.vec.push_back(i * k);
-        }
-        return mul;
-    }
+my_Vector my_Vector::cut(int count) {
+    vec.resize(count);
+    return *this;
+}
 
-    double lorentz_product(my_Vector v2) const {
-        if (vec.size() != v2.vec.size()) return 0;
-        double result = 0;
-        for (int i = 0; i < vec.size() - 1; i++) {
-            result += vec[i] * v2.vec[i];
-        }
-        result -= vec[vec.size() - 1] * v2.vec[v2.vec.size() - 1];
-        return result;
-    }
+std::vector<double> my_Vector::get_vec() {
+    return vec;
+}
 
-    double len() {
-        double result = 0;
-        for (auto i: vec) {
-            result += i * i;
-        }
-        return sqrt(result);
-    }
+void my_Vector::set(int i, double val) {
+    vec[i] = val;
+}
 
-    my_Vector cut(int count) {
-        std::vector <double> copy(vec);
-        vec.clear();
-        for (int i = 0; i < count; i++) {
-            vec.push_back(copy[i]);
-        }
-        copy.clear();
-        return *this;
-    }
+double my_Vector::get(int i) const {
+    return vec[i];
+}
 
-    std::vector<double> get_vec() {
-        return vec;
-    }
+void my_Vector::add_coord(int i, double val) {
+    vec[i] += val;
+}
 
-    void set(int i, double val) {
-        vec[i] = val;
+void my_Vector::print() const {
+    for (auto i: vec) {
+        std::cout << " " << i;
     }
+    std::cout << std::endl;
+}
 
-    void add_coord(int i, double val) {
-        vec[i] += val;
+void my_Vector::print(std::ostream &os) const {
+    for (auto i: vec) {
+        os << " " << i;
     }
-
-    void print() {
-        for (auto i: vec) {
-            std::cout << " " << i;
-        }
-        std::cout << std::endl;
-    }
-
-    void print(std::ostream &os) {
-        for (auto i: vec) {
-            os << " " << i;
-        }
-        os << std::endl;
-    }
-};
+    os << std::endl;
+}

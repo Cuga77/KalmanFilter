@@ -1,10 +1,11 @@
 #include <cstdlib>
 #include <cmath>
 #include <ctime>
-#include "model/vector.cpp"
-#include "model/matrix.cpp"
-#include "model/KalmanFilter.cpp"
-#include "model/Visualize.cpp"
+#include <vector>
+#include <iostream>
+#include "model/Visualize.h"
+#include "model/vector.h"
+#include "../include/gnuplot-iostream.h"
 
 double randn() {
     static bool hasSpare = false;
@@ -29,69 +30,72 @@ double randn() {
 int main() {
     srand(time(NULL));
 
-    double T = 0.01; // щаг дискретизации (10 мс)
+    double T = 0.01; // шаг дискретизации (10 мс)
     double g = 9.81; // ускорение свободного падения
     double l = 1.0;  // длина струны (1 м)
     double q = 0.001; // дисперсия шума системы
-    double r = 0.01;  // дисперсия шума измерений
 
-    //начальное состояние
-    my_Vector x0(2);
-    x0.set(0, 0.1); // начальный угол (радианы)
-    x0.set(1, 0.0); // начальная угловая скорость
-
-    // Начальная ковариационная матрица ошибки оценки
-    Matrix P0(2, 2);
-    P0.set(0, 0, 0.1);
-    P0.set(0, 1, 0.0);
-    P0.set(1, 0, 0.0);
-    P0.set(1, 1, 0.1);
-
-    KalmanFilter kf(T, g, l, q, r);
-    kf.initialize(x0, P0);
+    double theta_true = 0.1; // начальный угол (радианы)
+    double omega_true = 0.0; // начальная угловая скорость
 
     Visualize visualizer("Pendulum Simulation");
     visualizer.init();
 
-    std::vector<my_Vector> trajectory;
-
-    double omega_natural = sqrt(g / l);
-    double theta_true = x0.vec[0];
-    double omega_true = x0.vec[1];
+    std::vector<my_Vector> trace;
+    visualizer.addTrace(trace);
 
     int steps = 1000;
     for (int k = 0; k < steps; ++k) {
         double time = k * T;
 
-        // Обновление истинного состояния (без учета шума системы)
-        double theta_prev = theta_true;
-        theta_true = theta_true + omega_true * T;
-        omega_true = omega_true - (g / l) * theta_prev * T;
+        my_Vector state(3);
+        state.set(0, time);
+        state.set(1, theta_true);
+        state.set(2, omega_true);
 
-        // Добавляем шум системы
+        visualizer.extendsTraceByVec(state);
+
+        double theta_prev = theta_true;
+        double omega_prev = omega_true;
+
+        double theta_dot = omega_prev;
+        double omega_dot = - (g / l) * sin(theta_prev);
+
+        theta_true = theta_prev + theta_dot * T;
+        omega_true = omega_prev + omega_dot * T;
+
         theta_true += sqrt(q) * randn() * T;
         omega_true += sqrt(q) * randn() * T;
-
-        // Генерация измерения с шумом
-        double measurement_noise = sqrt(r) * randn();
-        double measurement = theta_true + measurement_noise;
-
-        my_Vector z(1);
-        z.set(0, measurement);
-
-        kf.predict();
-        kf.update(z);
-
-        my_Vector x_est = kf.getState();
-
-        trajectory.push_back(x_est);
-
-        // visualizer.extendsTraceByVec(x_est);
     }
 
-    visualizer.addTrace(trajectory);
+    visualizer.saveTraceToFile("pendulum_data.txt");
 
-    // visualizer.printTraces();
+    std::vector<std::pair<double, double>> theta_data;
+    std::vector<std::pair<double, double>> omega_data;
+
+    const auto& trace_data = visualizer.getTraces()[0];
+    for (const auto& vec : trace_data) {
+        double time = vec.get(0);
+        double theta = vec.get(1);
+        double omega = vec.get(2);
+
+        theta_data.emplace_back(time, theta);
+        omega_data.emplace_back(time, omega);
+    }
+
+    Gnuplot gp;
+
+    gp << "set title 'Pendulum Angle over Time'\n";
+    gp << "set xlabel 'Time (s)'\n";
+    gp << "set ylabel 'Theta (rad)'\n";
+    gp << "plot '-' with lines title 'Theta (rad)'\n";
+    gp.send1d(theta_data);
+
+    gp << "set title 'Pendulum Angular Velocity over Time'\n";
+    gp << "set xlabel 'Time (s)'\n";
+    gp << "set ylabel 'Omega (rad/s)'\n";
+    gp << "plot '-' with lines title 'Omega (rad/s)'\n";
+    gp.send1d(omega_data);
 
     return 0;
 }

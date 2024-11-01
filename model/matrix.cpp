@@ -1,8 +1,8 @@
 #include <cmath>
 #include <iostream>
 #include <vector>
-#include "vector.cpp"
 #include <fstream>
+#include "vector.h"
 
 struct Matrix {
     std::vector<std::vector<double> > matrix;
@@ -411,7 +411,7 @@ Matrix getFMatrix(double t, Matrix lastMtx) {
         {0, 0, 0, 0, 0, 0, 0, 1, 0},
         {0, 0, 0, 0, 0, 0, 0, 0, 1},
     };
-    // Mutate matrix
+
     for (int i = 0; i < lastMtx.matrix.size(); i++) {
         for (int j = 0; j < lastMtx.matrix[i].size(); j++) {
             lastMtx.set(i, j, mtxPettern[i][j]);
@@ -426,7 +426,3 @@ Matrix getHMatrix() {
         m.set(i, i, 1);
     return m;
 }
-
-/*
- *
-*/
