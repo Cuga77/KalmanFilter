@@ -1,7 +1,5 @@
-// vector.cpp
 #include "vector.h"
-
-#include <algorithm>
+#include "matrix.h"
 
 my_Vector::my_Vector() = default;
 

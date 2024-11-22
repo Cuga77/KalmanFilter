@@ -1,87 +1,91 @@
-#include <cstdlib>
-#include <cmath>
-#include <ctime>
-#include <vector>
 #include <iostream>
-#include "model/gnuplot-iostream.h"
+#include <vector>
+#include <cmath>
+#include <random>
+#include "model/MotionIntegrator.h"
+#include "model/Visualize.h"
 
-double randn() {
-    static bool hasSpare = false;
-    static double rand1, rand2;
-
-    if (hasSpare)
-    {
-        hasSpare = false;
-        return sqrt(rand1) * sin(rand2);
+std::vector<double> generateMeasurements(const std::vector<double> &times,
+                                         double omega_true,
+                                         double A_true,
+                                         double B_true,
+                                         double noise_std) {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::normal_distribution noise(0.0, noise_std);
+    std::vector<double> measurements;
+    for (double t: times) {
+        double true_value = A_true * cos(omega_true * t) + B_true * sin(omega_true * t);
+        measurements.push_back(true_value + noise(gen));
     }
-
-    hasSpare = true;
-
-    rand1 = rand() / ((double) RAND_MAX);
-    if (rand1 < 1e-100) rand1 = 1e-100;
-    rand1 = -2 * log(rand1);
-    rand2 = (rand() / ((double) RAND_MAX)) * M_PI * 2;
-
-    return sqrt(rand1) * cos(rand2);
+    return measurements;
 }
 
 int main() {
-    srand(time(NULL));
+    double t_start = 0.0;
+    double t_end = 10.0;
+    double dt = 0.1;
 
-    double T = 0.5;    // шаг дискретизации
-    double omega_true = 2.0; // истинная угловая скорость
-    double R = 45.5;    // дисперсия шума измерений
+    double omega_true = 2.0;
+    double A_true = 1.0;
+    double B_true = 0.5;
+    double noise_std = 0.1;
 
-    double theta_true = 10.0;     // истинный угол
-    double theta_est = 0.0;      // оцененный угол (интегрирование измерений)
-    double theta_est_no_noise = 0.0; // оцененный угол без шума (для сравнения)
-
-    std::vector<std::pair<double, double>> theta_true_data;
-    std::vector<std::pair<double, double>> theta_est_data;
-    std::vector<std::pair<double, double>> theta_est_no_noise_data;
-    std::vector<std::pair<double, double>> error_data;
-
-    int steps = 25000;
-    for (int k = 0; k < steps; ++k) {
-        double time = k * T;
-
-        // истинный угол
-        theta_true += omega_true * T;
-
-        // "шумный" угол
-        double omega_meas = omega_true + sqrt(R) * randn();
-
-        // интерирование шумного измерения для оценки угла
-        theta_est += omega_meas * T;
-        // интегрирование истинной углоой скорости без шума (для сравнения)
-        theta_est_no_noise += omega_true * T;
-
-        double error = theta_est - theta_true;
-
-        theta_true_data.emplace_back(time, theta_true);
-        theta_est_data.emplace_back(time, theta_est);
-        theta_est_no_noise_data.emplace_back(time, theta_est_no_noise);
-        error_data.emplace_back(time, error);
+    std::vector<double> times;
+    for (double t = t_start; t <= t_end; t += dt) {
+        times.push_back(t);
     }
 
-    Gnuplot gp;
+    std::vector<double> measurements = generateMeasurements(times, omega_true, A_true, B_true, noise_std);
+    MotionIntegrator integrator(dt, t_start, t_end, times, measurements);
 
-    gp << "set terminal png size 800,600\n";
-    gp << "set output 'theta_estimation.png'\n";
-    gp << "set title 'True Angle vs Estimated Angle'\n";
-    gp << "set xlabel 'Time (ms)'\n";
-    gp << "set ylabel 'Theta (rad)'\n";
-    gp << "plot '-' with lines title 'True Theta', '-' with lines title 'Estimated Theta', '-' with lines title 'Estimated Theta (No Noise)'\n";
-    gp.send1d(theta_true_data);
-    gp.send1d(theta_est_data);
-    gp.send1d(theta_est_no_noise_data);
+    double omega_est = integrator.getOmega();
+    double A_est = integrator.getACoef();
+    double B_est = integrator.getBCoef();
 
-    gp << "set output 'error_accumulation.png'\n";
-    gp << "set title 'Error Accumulation in Angle Estimation'\n";
-    gp << "set xlabel 'Time (ms)'\n";
-    gp << "set ylabel 'Error (rad)'\n";
-    gp << "plot '-' with lines title 'Estimation Error'\n";
-    gp.send1d(error_data);
+    std::cout << "Истинные параметры:" << std::endl;
+    std::cout << "Omega = " << omega_true << std::endl;
+    std::cout << "A = " << A_true << std::endl;
+    std::cout << "B = " << B_true << std::endl;
+
+    std::cout << "\nОцененные параметры:" << std::endl;
+    std::cout << "Omega = " << omega_est << std::endl;
+    std::cout << "A = " << A_est << std::endl;
+    std::cout << "B = " << B_est << std::endl;
+
+    std::vector<my_Vector> numerical = integrator.integrate();
+    std::vector<my_Vector> theoretical = integrator.getTheoretical();
+
+    Visualize visualizer("motion_comparison");
+    visualizer.init();
+
+    std::vector<my_Vector> numerical_vis;
+    std::vector<my_Vector> theoretical_vis;
+    std::vector<my_Vector> measurements_vis;
+
+    double t = t_start;
+    for (size_t i = 0; i < numerical.size(); ++i) {
+        numerical_vis.push_back(MotionIntegrator::getFullState(numerical[i], t));
+        theoretical_vis.push_back(MotionIntegrator::getFullState(theoretical[i], t));
+        t += dt;
+    }
+
+    for (size_t i = 0; i < measurements.size(); ++i) {
+        my_Vector measurement_state(3);
+        measurement_state.set(0, measurements[i]); // theta
+        measurement_state.set(1, 0.0); // omega
+        measurement_state.set(2, times[i]);
+        measurements_vis.push_back(measurement_state);
+    }
+
+    visualizer.addTrace(numerical_vis);
+    visualizer.addTrace(theoretical_vis);
+    visualizer.addTrace(measurements_vis);
+
+    visualizer.saveTraceToFile("motion_results.txt");
+
+    double error = integrator.getMeasurementError(times, measurements);
+    std::cout << "\nСреднеквадратичная ошибка: " << error << std::endl;
 
     return 0;
 }

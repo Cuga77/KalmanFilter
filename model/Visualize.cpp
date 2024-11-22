@@ -1,4 +1,3 @@
-// Visualize.cpp
 #include "Visualize.h"
 #include <fstream>
 
@@ -6,7 +5,7 @@ Visualize::Visualize(std::string id) {
     this->id = id;
 }
 
-Visualize& Visualize::init() {
+Visualize &Visualize::init() {
     std::cout << id << std::endl;
     return *this;
 }
@@ -22,15 +21,15 @@ void Visualize::extendsTraceByVec(my_Vector vec) {
 }
 
 void Visualize::printTraces() {
-    for (const auto& trace : traces) {
-        for (const auto& vec : trace) {
+    for (const auto &trace: traces) {
+        for (const auto &vec: trace) {
             vec.print();
         }
         std::cout << "---" << std::endl;
     }
 }
 
-void Visualize::saveTraceToFile(const std::string& filename) const {
+void Visualize::saveTraceToFile(const std::string &filename) const {
     std::ofstream outfile(filename);
     if (!outfile.is_open()) {
         std::cerr << "Не удалось открыть файл " << filename << " для записи." << std::endl;
@@ -42,8 +41,8 @@ void Visualize::saveTraceToFile(const std::string& filename) const {
         return;
     }
 
-    const auto& trace = traces[0];
-    for (const auto& vec : trace) {
+    const auto &trace = traces[0];
+    for (const auto &vec: trace) {
         if (vec.vec.size() >= 3) {
             outfile << vec.get(0) << " " << vec.get(1) << " " << vec.get(2) << std::endl;
         }
@@ -52,6 +51,6 @@ void Visualize::saveTraceToFile(const std::string& filename) const {
     outfile.close();
 }
 
-const std::vector<std::vector<my_Vector>>& Visualize::getTraces() const {
+const std::vector<std::vector<my_Vector> > &Visualize::getTraces() const {
     return traces;
 }

@@ -14,8 +14,12 @@ class KalmanFilter {
 
 public:
     KalmanFilter(double T, double g, double l, double q, double r);
-    void initialize(const my_Vector& x0, const Matrix& P0);
+
+    void initialize(const my_Vector &x0, const Matrix &P0);
+
     void predict();
-    void update(const my_Vector& z);
+
+    void update(const my_Vector &z);
+
     my_Vector getState() const;
 };
