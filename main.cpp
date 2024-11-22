@@ -56,6 +56,7 @@ int main() {
     std::vector<my_Vector> numerical = integrator.integrate();
     std::vector<my_Vector> theoretical = integrator.getTheoretical();
 
+    std::cout << '\n'<< std::endl;
     Visualize visualizer("motion_comparison");
     visualizer.init();
 
