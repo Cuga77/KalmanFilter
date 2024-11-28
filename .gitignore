@@ -1,3 +1,7 @@
 /model/gnuplot-iostream.h
 /cmake-build-debug/
 /.idea
+/CMakeFiles/
+/vscode/
+/build/kalmanFilter/
+/build/
