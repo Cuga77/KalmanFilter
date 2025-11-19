@@ -4,87 +4,132 @@
 #include <random>
 #include <iomanip>
 #include <fstream>
-#include "model/Visualize.h"
 
-std::vector<double> generateVelocityMeasurements(const std::vector<double>& times,
-                                                double omega_true,
-                                                double A_true,
-                                                double B_true,
-                                                double noise_std) {
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::normal_distribution noise(0.0, noise_std);
+#include "model/matrix.h"
+#include "model/vector.h"
+#include "model/KalmanFilter.h"
 
-    std::vector<double> velocities;
-    velocities.reserve(times.size());
-
-    for (double t : times) {
-        double true_velocity = -A_true * omega_true * sin(omega_true * t) +
-                              B_true * omega_true * cos(omega_true * t);
-        velocities.push_back(true_velocity + noise(gen));
-    }
-    return velocities;
-}
-
-void printParameters(const std::string& label, double omega, double A, double B) {
-    std::cout << label << ":\n"
-              << std::fixed << std::setprecision(6)
-              << "Omega = " << omega << "\n"
-              << "A     = " << A << "\n"
-              << "B     = " << B << "\n" << std::endl;
+// Helper to avoid linker errors with the existing library
+Matrix createIdentity(int n) {
+    Matrix res(n, n, 0.0);
+    for (int i = 0; i < n; ++i) res.set(i, i, 1.0);
+    return res;
 }
 
 int main() {
-    const double t_start = 0.0;
-    const double t_end = 100.0;
-    const double dt = 0.1;
+    // ==========================================
+    // 1. SYSTEM PARAMETERS (Differential Equation setup)
+    // ==========================================
+    const double t_end = 10.0;
+    const double dt = 0.01; 
+    const double Omega_true = 3.0; // Natural frequency
+    const double Initial_Amplitude = 1.0; 
+    const double sigma_meas = 0.2; // Measurement noise (Sensor)
 
-    const double omega_true = 4.0;
-    const double A_true = 2.0;
-    const double B_true = 2.0;
-    const double noise_std = 0.5;
+    std::cout << "Starting Simulation..." << std::endl;
+    std::cout << "Freq (Omega): " << Omega_true << ", dt: " << dt << std::endl;
 
-    std::vector<double> times;
-    times.reserve(static_cast<size_t>((t_end - t_start) / dt) + 1);
-    for (double t = t_start; t <= t_end; t += dt) {
+    // ==========================================
+    // 2. DATA GENERATION (Ground Truth)
+    // ==========================================
+    std::vector<double> times, true_angles, measured_velocities;
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::normal_distribution<> noise(0.0, sigma_meas);
+
+    for (double t = 0; t <= t_end; t += dt) {
         times.push_back(t);
+        // Exact solution of phi'' + w^2*phi = 0
+        double phi = Initial_Amplitude * std::cos(Omega_true * t);
+        double phi_dot = -Initial_Amplitude * Omega_true * std::sin(Omega_true * t);
+        
+        true_angles.push_back(phi);
+        measured_velocities.push_back(phi_dot + noise(gen));
     }
 
-    std::vector<double> measurements = generateVelocityMeasurements(
-        times, omega_true, A_true, B_true, noise_std
-    );
+    // ==========================================
+    // 3. KALMAN FILTER SETUP
+    // ==========================================
+    Matrix x0(2, 1); x0.set(0, 0, Initial_Amplitude); x0.set(1, 0, 0.0);
+    Matrix P0 = createIdentity(2);
+    Matrix H(1, 2); H.set(0, 0, 0.0); H.set(0, 1, 1.0); // Measuring velocity
+    Matrix R(1, 1); R.set(0, 0, sigma_meas * sigma_meas);
 
+    // --- MODEL 1: Constant Velocity (Kinematic) ---
+    // ODE: x'' = 0
+    // Fundamental Matrix: [[1, dt], [0, 1]] (Taylor series, order 1)
+    Matrix F_perm(2, 2);
+    F_perm.set(0, 0, 1.0); F_perm.set(0, 1, dt);
+    F_perm.set(1, 0, 0.0); F_perm.set(1, 1, 1.0);
+    
+    // High Process Noise (Q) because the model is physically wrong
+    Matrix Q_perm = createIdentity(2);
+    Q_perm.set(0, 0, 1e-4); Q_perm.set(1, 1, 0.1);  
+    
+    KalmanFilter kf_perm(x0, P0, F_perm, Q_perm, R, H);
 
-    printParameters("Истинные параметры", omega_true, A_true, B_true);
+    // --- MODEL 2: Harmonic Oscillator (Dynamic) ---
+    // ODE: x'' + w^2*x = 0
+    // Fundamental Matrix: Exact trigonometric solution
+    Matrix F_osc(2, 2);
+    double c = std::cos(Omega_true * dt);
+    double s = std::sin(Omega_true * dt);
+    F_osc.set(0, 0, c);                 F_osc.set(0, 1, s / Omega_true);
+    F_osc.set(1, 0, -Omega_true * s);   F_osc.set(1, 1, c);
 
-    std::ofstream iterations_file("integration_results.txt");
-    if (iterations_file.is_open()) {
-        iterations_file << "Time\tTheta_num\tOmega_num\tTheta_theo\tOmega_theo\tMeasured_v\n";
+    // Low Process Noise (Q) because the model matches reality
+    Matrix Q_osc = createIdentity(2);
+    Q_osc.set(0, 0, 1e-6); Q_osc.set(1, 1, 1e-6);
 
-        iterations_file.close();
+    KalmanFilter kf_osc(x0, P0, F_osc, Q_osc, R, H);
+
+    // ==========================================
+    // 4. SIMULATION LOOP
+    // ==========================================
+    std::ofstream outfile("results.txt");
+    outfile << "Time TrueAngle MeasVel AnglePerm AngleOsc" << std::endl;
+
+    double error_sq_perm = 0.0;
+    double error_sq_osc = 0.0;
+
+    for (size_t i = 0; i < times.size(); ++i) {
+        double z = measured_velocities[i];
+
+        // Predict
+        kf_perm.predict();
+        kf_osc.predict();
+
+        // Update
+        kf_perm.update(z);
+        kf_osc.update(z);
+
+        // Errors
+        double diff_perm = true_angles[i] - kf_perm.getAngle();
+        double diff_osc = true_angles[i] - kf_osc.getAngle();
+        error_sq_perm += diff_perm * diff_perm;
+        error_sq_osc += diff_osc * diff_osc;
+
+        // Save
+        outfile << times[i] << " " << true_angles[i] << " " << z << " "
+                << kf_perm.getAngle() << " " << kf_osc.getAngle() << std::endl;
     }
+    outfile.close();
 
-    Visualize visualizer("motion_comparison");
-    visualizer.init();
+    // ==========================================
+    // 5. REPORT
+    // ==========================================
+    std::cout << "------------------------------------------------" << std::endl;
+    std::cout << "RESULTS (Mean Squared Error Comparison):" << std::endl;
+    std::cout << "  Model 1 (Constant Velocity): " << error_sq_perm << std::endl;
+    std::cout << "  Model 2 (Harmonic Osc.):     " << error_sq_osc << std::endl;
+    std::cout << "------------------------------------------------" << std::endl;
 
-    std::vector<my_Vector> numerical_vis;
-    std::vector<my_Vector> theoretical_vis;
-    std::vector<my_Vector> measurements_vis;
-
-
-    for (size_t i = 0; i < measurements.size(); ++i) {
-        my_Vector measurement_state(3);
-        measurement_state.set(0, measurements[i]); // скорость
-        measurement_state.set(1, 0.0);            // омега
-        measurement_state.set(2, times[i]);       // время
-        measurements_vis.push_back(measurement_state);
+    if (error_sq_osc < error_sq_perm) {
+        std::cout << "SUCCESS: Physical model outperforms kinematic model." << std::endl;
+        std::cout << "Improvement factor: " << (error_sq_perm / error_sq_osc) << "x" << std::endl;
+    } else {
+        std::cout << "FAIL: Check Q/R parameters." << std::endl;
     }
-
-    visualizer.addTrace(numerical_vis);
-    visualizer.addTrace(theoretical_vis);
-    visualizer.addTrace(measurements_vis);
-    visualizer.saveTraceToFile("motion_results.txt");
-
 
     return 0;
 }
