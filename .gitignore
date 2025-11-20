@@ -7,3 +7,15 @@
 /build/
 /myenv/
 /.vscode/
+
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Generated Reports and Plots
+*.html
+*.png
+
+# Temporary files
+temp_pdf.txt
