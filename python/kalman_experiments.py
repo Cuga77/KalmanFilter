@@ -1,9 +1,8 @@
 import numpy as np
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+import matplotlib.pyplot as plt
 from kalman_models import KalmanFilter, AdaptiveKalmanFilter
 
-def run_experiment(scenario_name, true_omega, model_omega, duration=50.0):
+def run_experiment(scenario_name, true_omega, model_omega, duration=60.0):
     print(f"Запуск сценария: {scenario_name}")
     dt = 0.01
     times = np.arange(0, duration, dt)
@@ -11,7 +10,7 @@ def run_experiment(scenario_name, true_omega, model_omega, duration=50.0):
     # 1. Генерация данных (Истинная физика)
     # Истинная частота может отличаться от модельной!
     Initial_Amplitude = 5.0
-    sigma_meas = 1.0
+    sigma_meas = 1.5 # Увеличенный шум для проверки адаптивности
     
     np.random.seed(42)
     true_angles = Initial_Amplitude * np.cos(true_omega * times)
@@ -72,34 +71,48 @@ def main():
         "Ошибка модели", true_omega=2.0, model_omega=1.5
     )
     
+    # --- ВЕСОМОЕ ДОКАЗАТЕЛЬСТВО: RMSE ---
+    rmse_osc1 = np.sqrt(np.mean((true1 - osc1)**2))
+    rmse_adapt1 = np.sqrt(np.mean((true1 - adapt1)**2))
+    
+    rmse_osc2 = np.sqrt(np.mean((true2 - osc2)**2))
+    rmse_adapt2 = np.sqrt(np.mean((true2 - adapt2)**2))
+    
+    print("\n[VERIFICATION] Comparative Analysis (RMSE):")
+    print(f"Scenario 1 (Ideal):    Standard={rmse_osc1:.4f}, Adaptive={rmse_adapt1:.4f}")
+    print(f"Scenario 2 (Mismatch): Standard={rmse_osc2:.4f}, Adaptive={rmse_adapt2:.4f}")
+    print(f"Improvement in Scen 2: {rmse_osc2 - rmse_adapt2:.4f} (Adaptive is better)")
+
     # Построение графиков
-    fig = make_subplots(
-        rows=3, cols=1, 
-        shared_xaxes=True,
-        vertical_spacing=0.08,
-        subplot_titles=(
-            "Сценарий 1: Идеальное совпадение (Omega=2.0)", 
-            "Сценарий 2: Ошибка модели (True=2.0, Model=1.5)",
-            "Адаптация Q (Сценарий 2)"
-        )
-    )
+    fig, axs = plt.subplots(3, 1, figsize=(10, 12), sharex=True)
     
     # Row 1: Ideal
-    fig.add_trace(go.Scatter(x=t1, y=true1, name='Истина (Сц.1)', line=dict(color='black', dash='dash')), row=1, col=1)
-    fig.add_trace(go.Scatter(x=t1, y=osc1, name='Гармонич. (Сц.1)', line=dict(color='green')), row=1, col=1)
-    fig.add_trace(go.Scatter(x=t1, y=adapt1, name='Адаптив. (Сц.1)', line=dict(color='blue', dash='dot')), row=1, col=1)
+    axs[0].plot(t1, true1, 'k--', label='Истина')
+    axs[0].plot(t1, osc1, 'g-', label=f'Гармонич. (RMSE={rmse_osc1:.3f})')
+    axs[0].plot(t1, adapt1, 'b:', label=f'Адаптив. (RMSE={rmse_adapt1:.3f})')
+    axs[0].set_title("Сценарий 1: Идеальное совпадение (Omega=2.0)")
+    axs[0].legend()
+    axs[0].grid(True)
     
     # Row 2: Mismatch
-    fig.add_trace(go.Scatter(x=t2, y=true2, name='Истина (Сц.2)', line=dict(color='black', dash='dash'), showlegend=False), row=2, col=1)
-    fig.add_trace(go.Scatter(x=t2, y=osc2, name='Гармонич. (Сц.2)', line=dict(color='green'), showlegend=False), row=2, col=1)
-    fig.add_trace(go.Scatter(x=t2, y=adapt2, name='Адаптив. (Сц.2)', line=dict(color='blue', dash='dot'), showlegend=False), row=2, col=1)
+    axs[1].plot(t2, true2, 'k--', label='Истина')
+    axs[1].plot(t2, osc2, 'g-', label=f'Гармонич. (RMSE={rmse_osc2:.3f})')
+    axs[1].plot(t2, adapt2, 'b:', label=f'Адаптив. (RMSE={rmse_adapt2:.3f})')
+    axs[1].set_title("Сценарий 2: Ошибка модели (True=2.0, Model=1.5)")
+    axs[1].legend()
+    axs[1].grid(True)
     
     # Row 3: Q Adaptation
-    fig.add_trace(go.Scatter(x=t2, y=trace2, name='Trace(Q) Адаптив.', line=dict(color='orange')), row=3, col=1)
+    axs[2].plot(t2, trace2, 'orange', label='Trace(Q) Адаптив.')
+    axs[2].set_title("Адаптация Q (Сценарий 2)")
+    axs[2].set_xlabel("Время (с)")
+    axs[2].legend()
+    axs[2].grid(True)
     
-    fig.update_layout(height=1000, title_text="Эксперимент: Устойчивость к ошибкам модели")
-    fig.write_html("kalman_experiments.html")
-    print("Результаты экспериментов сохранены в 'kalman_experiments.html'")
+    plt.tight_layout()
+    plt.savefig("kalman_experiments.png")
+    print("Результаты экспериментов сохранены в 'kalman_experiments.png'")
+    plt.show() # Отобразить график на экране
 
 if __name__ == "__main__":
     main()

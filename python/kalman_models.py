@@ -99,160 +99,117 @@ def run_simulation():
     # 1. ПАРАМЕТРЫ СИСТЕМЫ
     # ==========================================
     dt = 0.01
-    t_end = 50.0           # Увеличили время симуляции для наглядности
-    Omega_true = 2.0       # Немного уменьшили частоту, чтобы график был читаемее
-    Initial_Amplitude = 5.0 # Увеличили амплитуду
-    sigma_meas = 1.0       # Увеличили шум, чтобы работа фильтра была заметнее
+    t_end = 100.0            # Время симуляции (увеличено для наглядности)
+    Omega_true = 2.0        
+    Initial_Amplitude = 10.0 
+    sigma_meas = 0.8        # Шум измерений (увеличен)
     
     times = np.arange(0, t_end, dt)
     
     # ==========================================
-    # 2. ГЕНЕРАЦИЯ ДАННЫХ (Истинные значения)
+    # 2. ГЕНЕРАЦИЯ ДАННЫХ
     # ==========================================
-    # Истинная физика: Гармонический осциллятор
     true_angles = Initial_Amplitude * np.cos(Omega_true * times)
     true_velocities = -Initial_Amplitude * Omega_true * np.sin(Omega_true * times)
     
-    # Измерения: Скорость + Шум
     np.random.seed(42)
     measurements = true_velocities + np.random.normal(0, sigma_meas, size=len(times))
     
     # ==========================================
     # 3. НАСТРОЙКА ФИЛЬТРОВ
     # ==========================================
-    # Начальное состояние [Угол, Скорость]
-    # Допустим, мы не знаем точного начального состояния
     x0 = np.array([[0.0], [0.0]]) 
-    P0 = np.eye(2) * 10.0 # Большая начальная неопределенность
-    
-    # Матрица измерений (измеряем скорость, т.е. 2-ю переменную состояния)
+    P0 = np.eye(2) * 10.0 
     H = np.array([[0.0, 1.0]])
-    
-    # Ковариация шума измерений
     R = np.array([[sigma_meas**2]])
     
-    # --- МОДЕЛЬ 1: Перманентное вращение (Постоянная скорость) ---
-    # x_k = x_{k-1} + dt * v_{k-1}
-    # v_k = v_{k-1}
-    F_perm = np.array([
-        [1.0, dt],
-        [0.0, 1.0]
-    ])
-    # Высокий шум процесса, так как модель неверна
-    Q_perm = np.eye(2)
-    Q_perm[0,0] = 1e-3
-    Q_perm[1,1] = 1.0
-    
-    kf_perm = KalmanFilter(F_perm, H, Q_perm, R, x0, P0)
-    
-    # --- МОДЕЛЬ 2: Крутильные колебания (Гармонический осциллятор) ---
-    # Точная дискретизация x'' + w^2*x = 0
+    # --- МОДЕЛЬ 2 (Гармоническая - "Эталон") ---
     c = np.cos(Omega_true * dt)
     s = np.sin(Omega_true * dt)
     F_osc = np.array([
         [c, s/Omega_true],
         [-Omega_true*s, c]
     ])
-    # Низкий шум процесса, так как модель верна
-    Q_osc = np.eye(2) * 1e-6
+    # Маленький шум процесса (мы доверяем модели)
+    Q_osc = np.eye(2) * 1e-5
     
     kf_osc = KalmanFilter(F_osc, H, Q_osc, R, x0, P0)
-    
-    # --- МОДЕЛЬ 3: Адаптивный фильтр (изначально как Модель 2) ---
-    # Начинаем с немного неверного Q, чтобы увидеть адаптацию
-    Q_adapt_init = np.eye(2) * 1e-5 
-    kf_adapt = AdaptiveKalmanFilter(F_osc, H, Q_adapt_init, R, x0, P0)
     
     # ==========================================
     # 4. ЦИКЛ СИМУЛЯЦИИ
     # ==========================================
-    est_perm = []
     est_osc = []
-    est_adapt = []
+    P_history_osc = [] # <--- НОВОЕ: Храним диагональ ковариации
     
     for z in measurements:
         z_vec = np.array([[z]])
         
-        # Прогноз (Predict)
-        kf_perm.predict()
         kf_osc.predict()
-        kf_adapt.predict()
-        
-        # Обновление (Update)
-        kf_perm.update(z_vec)
         kf_osc.update(z_vec)
-        kf_adapt.update(z_vec)
         
-        # Сохраняем оценку угла (1-я переменная состояния)
-        est_perm.append(kf_perm.x[0,0])
         est_osc.append(kf_osc.x[0,0])
-        est_adapt.append(kf_adapt.x[0,0])
         
-    # ==========================================
-    # 5. АНАЛИЗ РЕЗУЛЬТАТОВ
-    # ==========================================
-    est_perm = np.array(est_perm)
+        # Сохраняем дисперсию ошибки угла (элемент P[0,0])
+        # P показывает теоретический квадрат ошибки оценки
+        P_history_osc.append(kf_osc.P[0,0])
+        
     est_osc = np.array(est_osc)
-    est_adapt = np.array(est_adapt)
-    
-    mse_perm = np.mean((true_angles - est_perm)**2)
-    mse_osc = np.mean((true_angles - est_osc)**2)
-    mse_adapt = np.mean((true_angles - est_adapt)**2)
-    
-    print(f"MSE Модель 1 (Пост. скорость): {mse_perm:.6f}")
-    print(f"MSE Модель 2 (Гармоническая):  {mse_osc:.6f}")
-    print(f"MSE Модель 3 (Адаптивная):     {mse_adapt:.6f}")
     
     # ==========================================
-    # 6. ПОСТРОЕНИЕ ИНТЕРАКТИВНОГО ГРАФИКА (PLOTLY)
+    # 5. ПОСТРОЕНИЕ ГРАФИКА С 3-SIGMA (PLOTLY)
     # ==========================================
-    try:
-        import plotly.graph_objects as go
-        from plotly.subplots import make_subplots
-        
-        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
-                            vertical_spacing=0.1,
-                            subplot_titles=("Сравнение оценки угла", "Ошибка оценки"))
-
-        # График 1: Углы
-        fig.add_trace(go.Scatter(x=times, y=true_angles, name='Истинный угол',
-                                 line=dict(color='black', width=2, dash='dash')), row=1, col=1)
-        fig.add_trace(go.Scatter(x=times, y=est_perm, name='Модель 1 (Пост. скорость)',
-                                 line=dict(color='red', width=1)), row=1, col=1)
-        fig.add_trace(go.Scatter(x=times, y=est_osc, name='Модель 2 (Гармоническая)',
-                                 line=dict(color='green', width=1)), row=1, col=1)
-        fig.add_trace(go.Scatter(x=times, y=est_adapt, name='Модель 3 (Адаптивная)',
-                                 line=dict(color='blue', width=2, dash='dot')), row=1, col=1)
-
-        # График 2: Ошибки
-        fig.add_trace(go.Scatter(x=times, y=true_angles - est_perm, name='Ошибка Модель 1',
-                                 line=dict(color='red', width=1), showlegend=False), row=2, col=1)
-        fig.add_trace(go.Scatter(x=times, y=true_angles - est_osc, name='Ошибка Модель 2',
-                                 line=dict(color='green', width=1), showlegend=False), row=2, col=1)
-        fig.add_trace(go.Scatter(x=times, y=true_angles - est_adapt, name='Ошибка Модель 3',
-                                 line=dict(color='blue', width=2, dash='dot'), showlegend=False), row=2, col=1)
-
-        fig.update_layout(height=800, title_text="Результаты Фильтра Калмана (Интерактивный график)",
-                          hovermode="x unified")
-        fig.update_xaxes(title_text="Время (с)", row=2, col=1)
-        fig.update_yaxes(title_text="Угол (рад)", row=1, col=1)
-        fig.update_yaxes(title_text="Ошибка (рад)", row=2, col=1)
-
-        fig.write_html("kalman_results.html")
-        print("Интерактивный график сохранен в 'kalman_results.html'")
-        
-    except ImportError:
-        print("Plotly не установлен. Используется Matplotlib.")
-        # Fallback to Matplotlib if Plotly fails (though we installed it)
-        plt.figure(figsize=(12, 6))
-        plt.plot(times, true_angles, 'k--', label='Истинный угол')
-        plt.plot(times, est_perm, 'r-', label='Модель 1')
-        plt.plot(times, est_osc, 'g-', label='Модель 2')
-        plt.plot(times, est_adapt, 'b:', label='Модель 3')
-        plt.legend()
-        plt.grid(True)
-        plt.savefig('kalman_results.png')
-        print("График сохранен в 'kalman_results.png'")
+    # ==========================================
+    # 5. ПОСТРОЕНИЕ ГРАФИКА С 3-SIGMA (MATPLOTLIB)
+    # ==========================================
+    
+    # Расчет 3-сигма коридора
+    # ПРАВИЛО 3-Х СИГМ (3-Sigma Rule):
+    # В нормальном распределении (гауссиане):
+    # - 68.2% значений лежат в пределах ±1σ (одна сигма)
+    # - 95.4% значений лежат в пределах ±2σ
+    # - 99.7% значений лежат в пределах ±3σ
+    #
+    # Если наш фильтр работает правильно, то истинная ошибка (красная линия)
+    # должна находиться внутри коридора ±3σ (серая зона) в 99.7% случаев.
+    # Если ошибка часто вылетает за этот коридор — значит, фильтр "слишком самоуверен"
+    # (думает, что он точнее, чем есть на самом деле) или модель неверна.
+    
+    sigma_angle = np.sqrt(np.array(P_history_osc))
+    upper_bound = 3 * sigma_angle
+    lower_bound = -3 * sigma_angle
+    
+    error = true_angles - est_osc
+    
+    # --- ВЕСОМОЕ ДОКАЗАТЕЛЬСТВО: RMSE ---
+    rmse = np.sqrt(np.mean(error**2))
+    print(f"\n[VERIFICATION] Model 2 (Harmonic) RMSE: {rmse:.4f}")
+    
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 10), sharex=True)
+    
+    # График 1: Углы
+    ax1.plot(times, true_angles, 'k--', label='Истинный угол')
+    ax1.plot(times, est_osc, 'g-', label='Оценка Калмана')
+    ax1.set_title("Оценка угла (Model 2)")
+    ax1.set_ylabel("Угол (рад)")
+    ax1.legend()
+    ax1.grid(True)
+    
+    # График 2: Ошибки + Коридор
+    ax2.plot(times, upper_bound, 'gray', alpha=0.3)
+    ax2.plot(times, lower_bound, 'gray', alpha=0.3)
+    ax2.fill_between(times, lower_bound, upper_bound, color='gray', alpha=0.2, label='Коридор 3σ')
+    ax2.plot(times, error, 'r-', label='Ошибка (True - Est)')
+    
+    ax2.set_title(f"Ошибка оценки и 3σ коридор (RMSE = {rmse:.4f})")
+    ax2.set_xlabel("Время (с)")
+    ax2.set_ylabel("Ошибка (рад)")
+    ax2.legend()
+    ax2.grid(True)
+    
+    plt.tight_layout()
+    plt.savefig("kalman_3sigma.png")
+    print("График сохранен в 'kalman_3sigma.png'")
+    plt.show() # Отобразить график на экране
 
 if __name__ == "__main__":
     run_simulation()

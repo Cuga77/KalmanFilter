@@ -9,7 +9,7 @@
 /.vscode/
 
 # Python
-venv/
+*.venv
 __pycache__/
 *.pyc
 

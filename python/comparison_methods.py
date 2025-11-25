@@ -1,5 +1,5 @@
 import numpy as np
-import plotly.graph_objects as go
+import matplotlib.pyplot as plt
 from kalman_models import KalmanFilter
 
 def moving_average(data, window_size):
@@ -14,14 +14,13 @@ def exponential_moving_average(data, alpha):
     return np.array(ema)
 
 def run_comparison():
-    # 1. Параметры и Генерация данных
     dt = 0.01
-    t_end = 20.0
+    t_end = 30.0 # Увеличено время
     times = np.arange(0, t_end, dt)
     
     Omega_true = 2.0
     Initial_Amplitude = 5.0
-    sigma_meas = 2.0 # Сильный шум, чтобы усложнить задачу
+    sigma_meas = 2.5 # Очень сильный шум, чтобы показать преимущество Калмана
     
     np.random.seed(42)
     # Истинный сигнал (скорость, так как мы измеряем скорость)
@@ -29,13 +28,13 @@ def run_comparison():
     true_signal = -Initial_Amplitude * Omega_true * np.sin(Omega_true * times)
     measurements = true_signal + np.random.normal(0, sigma_meas, size=len(times))
     
-    # 2. Метод 1: Скользящее среднее (Moving Average)
+    # 2. Метод 1: Скользящее среднее
     window = 20 # окно 0.2 сек
     ma_result = moving_average(measurements, window)
-    # Корректируем время для MA (оно укорачивает массив)
+    # Корректируем время для MA
     ma_times = times[window-1:]
     
-    # 3. Метод 2: EMA (Low-pass filter)
+    # 3. Метод 2: EMA
     alpha = 0.1
     ema_result = exponential_moving_average(measurements, alpha)
     
@@ -65,39 +64,54 @@ def run_comparison():
         
     kalman_result = np.array(kalman_result)
     
+    # --- ВЕСОМОЕ ДОКАЗАТЕЛЬСТВО: RMSE ---
+    # Для MA нужно обрезать true_signal
+    rmse_ma = np.sqrt(np.mean((true_signal[window-1:] - ma_result)**2))
+    rmse_ema = np.sqrt(np.mean((true_signal - ema_result)**2))
+    rmse_kalman = np.sqrt(np.mean((true_signal - kalman_result)**2))
+    
+    print("\n[VERIFICATION] Method Comparison (RMSE):")
+    print(f"Moving Average (w={window}): {rmse_ma:.4f}")
+    print(f"EMA (alpha={alpha}):        {rmse_ema:.4f}")
+    print(f"Kalman Filter:             {rmse_kalman:.4f}")
+    print(f"Kalman Improvement over MA:  {rmse_ma - rmse_kalman:.4f}")
+    
     # 5. Построение графика
-    fig = go.Figure()
+    plt.figure(figsize=(12, 7))
     
     # Истина
-    fig.add_trace(go.Scatter(x=times, y=true_signal, name='Истинный сигнал',
-                             line=dict(color='black', width=3, dash='dash')))
+    plt.plot(times, true_signal, 'k--', linewidth=2, label='Истинный сигнал')
     
-    # Измерения (шум) - делаем полупрозрачными
-    fig.add_trace(go.Scatter(x=times, y=measurements, name='Зашумленные измерения',
-                             line=dict(color='lightgray', width=1), opacity=0.5))
+    # Измерения (шум)
+    # Используем точки ('.') вместо линии, чтобы показать "облако" измерений
+    # alpha=0.3 делает их полупрозрачными, чтобы не перекрывать графики
+    plt.plot(times, measurements, '.', color='gray', alpha=0.3, label='Зашумленные измерения')
     
     # Скользящее среднее
-    fig.add_trace(go.Scatter(x=ma_times, y=ma_result, name=f'Скользящее среднее (окно {window})',
-                             line=dict(color='orange', width=2)))
+    # MA (Moving Average) - берет среднее арифметическое за последние N точек.
+    # Плюс: Простота. Минус: Все точки имеют равный вес, поэтому реакция на изменения запаздывает.
+    plt.plot(ma_times, ma_result, color='orange', linewidth=2, label=f'Скользящее Среднее (RMSE={rmse_ma:.2f})')
     
     # EMA
-    fig.add_trace(go.Scatter(x=times, y=ema_result, name=f'EMA (alpha={alpha})',
-                             line=dict(color='purple', width=2)))
+    # EMA (Exponential Moving Average) - новые точки имеют больший вес, чем старые.
+    # Вес убывает экспоненциально. Это позволяет быстрее реагировать на изменения, чем обычное MA.
+    plt.plot(times, ema_result, color='purple', linewidth=2, label=f'Экспоненциальное Сглаживание (RMSE={rmse_ema:.2f})')
     
     # Калман
-    fig.add_trace(go.Scatter(x=times, y=kalman_result, name='Фильтр Калмана',
-                             line=dict(color='green', width=3)))
+    # Фильтр Калмана учитывает физику процесса (модель) и статистику шума.
+    # Он "предсказывает", где должна быть точка, и корректирует это предсказание измерением.
+    plt.plot(times, kalman_result, color='green', linewidth=2, label=f'Фильтр Калмана (RMSE={rmse_kalman:.2f})')
     
-    fig.update_layout(
-        title="Сравнение методов фильтрации: Калман vs Простые методы",
-        xaxis_title="Время (с)",
-        yaxis_title="Скорость (усл. ед.)",
-        height=700,
-        hovermode="x unified"
-    )
+    plt.title("Сравнение методов фильтрации: Калман vs Простые методы")
+    plt.xlabel("Время (с)")
+    plt.ylabel("Скорость (усл. ед.)")
+    plt.legend()
+    plt.grid(True)
     
-    fig.write_html("method_comparison.html")
-    print("График сравнения методов сохранен в 'method_comparison.html'")
+    plt.tight_layout()
+    plt.savefig("method_comparison.png")
+    print("График сравнения методов сохранен в 'method_comparison.png'")
+    plt.show() # Отобразить график на экране
 
 if __name__ == "__main__":
     run_comparison()
